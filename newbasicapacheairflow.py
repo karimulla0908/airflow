@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.python.PythonOperator import PythonOperator
+from airflow.operators.python import PythonOperator
 from azure.storage.blob import BlobServiceClient
 import pandas as pd
 import numpy as np
