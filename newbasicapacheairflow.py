@@ -298,14 +298,12 @@ processing_task = PythonOperator(
 generate_url_task = PythonOperator(
     task_id='generate_url_task',
     python_callable=generate_url,
-    provide_context=True,
     dag=dag,
 )
 
 cleaning_data_task = PythonOperator(
     task_id='cleaning_data_task',
     python_callable=clean_data,
-    provide_context=True,
     dag=dag,
 )
 
