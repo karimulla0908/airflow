@@ -22,9 +22,9 @@ default_args = {
 
 # Define the DAG
 dag = DAG(
-    'housescrappingdata',
+    'END-END-MLOPS',
     default_args=default_args,
-    description='Scraping DAG',
+    description='Scraping DAGS',
     schedule_interval=None,
 )
 
