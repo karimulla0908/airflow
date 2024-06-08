@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.operators.python_operator import PythonOperator
+from airflow.operators.python.PythonOperator import PythonOperator
 from azure.storage.blob import BlobServiceClient
 import pandas as pd
 import numpy as np
@@ -25,7 +25,7 @@ dag = DAG(
     'END-END-MLOPS',
     default_args=default_args,
     description='Scraping DAGS',
-    schedule_interval=None,
+    schedule=None,
 )
 
 # Define Python functions for the tasks
