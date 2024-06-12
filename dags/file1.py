@@ -84,7 +84,7 @@ def convert_to_lakh(value):
 
 # Azure Blob Storage details
 account_name = "housescrape0908"
-sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-08-09T14:32:26Z&st=2024-06-11T06:32:26Z&spr=https&sig=YodWwHLa0pFMY5WS03BVUeEQttQCSSiGb2xLH%2B2hmRc%3D"
+sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-09-19T00:12:09Z&st=2024-06-12T16:12:09Z&spr=https&sig=Nt%2Fv%2FbQqXqHkQ5P7WhPnOn3Z1gRNK1d%2BR334VCL1Agk%3D"
 
 def extract_urls_from_scripts(html_content):
     logging.info("Extracting URLs from script tags.")
