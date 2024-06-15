@@ -14,7 +14,7 @@ import logging
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2024, 6, 11, 13, 0),
+    'start_date': datetime(2024, 6, 15, 13, 0),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
