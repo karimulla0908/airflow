@@ -84,7 +84,7 @@ def convert_to_lakh(value):
 
 # Azure Blob Storage details
 account_name = "housescrape0908"
-sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-06-20T01:38:02Z&st=2024-06-13T17:38:02Z&spr=https&sig=ZyvmNrIUHEP1FkXMvVk4MrGOdXI9CNJeKf5cqOXw1oU%3D"
+sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-06-28T15:11:48Z&st=2024-06-15T07:11:48Z&spr=https&sig=hFCrUlsiIr58TRew9YsZBUiiYyqJ3zfhutWu%2BPOSc5A%3D"
 
 def extract_urls_from_scripts(html_content):
     logging.info("Extracting URLs from script tags.")
@@ -258,7 +258,7 @@ def clean_data(**kwargs):
         property_data_csv_file = f"cleaned_property_data_{datetime_string}.csv"
         print(df_cleaned)
         df_cleaned.to_csv(property_data_csv_file, index=False)
-        property_data_container_name = "uncleaneddata"
+        property_data_container_name = "cleaneddata0908"
         upload_to_azure_blob(account_name, property_data_container_name, property_data_csv_file, sas_token)
         logging.info("Property data scraping and upload completed.")
     except Exception as e:
