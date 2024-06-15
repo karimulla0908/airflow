@@ -25,7 +25,7 @@ default_args = {
 dag = DAG(
     'END-END-MLOPS',
     default_args=default_args,
-    description='Scraping DAGS',
+    description='Scraping DAG 0908',
     schedule=None,
 )
 
