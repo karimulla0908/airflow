@@ -1,4 +1,3 @@
-
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -10,6 +9,10 @@ import requests
 import json
 import re
 import logging
+import inflect
+
+# Initialize the inflect engine
+p = inflect.engine()
 
 default_args = {
     'owner': 'airflow',
@@ -46,8 +49,10 @@ def merge_similar_columns(df):
     def get_column_pairs(columns):
         singular_plural_pairs = {}
         for col in columns:
-            if col.endswith('s') and col[:-1] in columns:
-                singular_plural_pairs[col[:-1]] = col
+            singular_form = p.singular_noun(col) or col  # Get the singular form or keep the column name if it's already singular
+            plural_form = p.plural_noun(col) or col     # Get the plural form or keep the column name if it's already plural
+            if singular_form in columns and plural_form in columns:
+                singular_plural_pairs[singular_form] = plural_form
         return singular_plural_pairs
 
     columns = df.columns
@@ -83,8 +88,8 @@ def convert_to_lakh(value):
     return np.nan
 
 # Azure Blob Storage details
-account_name = "housescrape0908"
-sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-06-28T15:11:48Z&st=2024-06-15T07:11:48Z&spr=https&sig=hFCrUlsiIr58TRew9YsZBUiiYyqJ3zfhutWu%2BPOSc5A%3D"
+account_name = "housescrape09"
+sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-10-09T20:00:13Z&st=2024-06-24T12:00:13Z&spr=https&sig=0mQARoqDmL0vN5SAeUPVEyhR4ipSixeDpuo6VBvnqqU%3D"
 
 def extract_urls_from_scripts(html_content):
     logging.info("Extracting URLs from script tags.")
@@ -202,109 +207,77 @@ def extract_property_data(url):
         # Extracting carpet area and price per sqft using regular expressions
         description = soup.get_text()
         carpet_area_match = re.search(r'(\d+)\s*sqft', description)
-        price_per_sqft_match = re.search(r'₹([\d,]+)/sqft', description)
+        price_per_sqft_match = re.search(r'(\d+)\s*per sqft', description)
 
         if carpet_area_match:
             data['Carpet Area'] = carpet_area_match.group(1)
-        else:
-            data['Carpet Area'] = None
-
         if price_per_sqft_match:
-            data['Price per sqft'] = price_per_sqft_match.group(1).replace(',', '')
-        else:
-            data['Price per sqft'] = None
+            data['Price per sqft'] = price_per_sqft_match.group(1)
 
-        # Extracting located floor and number of floors
-        floor_info_match = re.search(r'(\d+)\s*\(Out of\s*(\d+)\s*Floors\)', description, re.IGNORECASE)
-        if floor_info_match:
-            data['Located Floor'] = floor_info_match.group(1)
-            data['Number of Floors'] = floor_info_match.group(2)
-        else:
-            data['Located Floor'] = None
-            data['Number of Floors'] = None
-
-        logging.info(f"Extracted data: {data}")
         return data
     except Exception as e:
-        logging.error(f"An error occurred while extracting property data: {e}")
-        return {}
+        logging.error(f"An error occurred while extracting property data from {url}: {e}")
+        return None
 
-def clean_data(**kwargs):
-    try:
-        ti = kwargs['ti']
-        data_list = ti.xcom_pull(task_ids='generate_url_task', key='property_data')
-        logging.info(f"Data received from XCom: {data_list}")
+def process_all_data():
+    # Task 1: Get all property URLs
+    start_url = "https://www.magicbricks.com/flats-in-pune-for-sale-pppfs"
+    max_pages = 3  # Adjust the number of pages to scrape
 
-        if not data_list:
-            logging.error("No data received from XCom.")
-            return
+    logging.info(f"Starting URL scraping for {max_pages} pages from {start_url}.")
+    property_urls = get_urls_from_multiple_pages(start_url, max_pages)
 
-        df = pd.DataFrame(data_list)
-        df = df.loc[:, ~df.columns.str.isdigit()]
-        df = merge_similar_columns(df)
-        df_cleaned = remove_columns_with_high_missing_values(df)
-        if 'Address' in df_cleaned.columns:
-            df_cleaned.loc[:,'Address'] = df_cleaned['Address'].astype(str).str.split(",").str[-2]
-        if 'Flooring' in df_cleaned.columns:
-            df_cleaned.loc[:,'Flooring'] = df_cleaned['Flooring'].astype(str).str.split(",").str[0]
-        columns_to_drop = ['Project', 'Landmarks', 'Floor', 'Developer', 'Project', 'Furnishing', 'Booking Amount']
-        df_cleaned = df_cleaned.drop(columns=[col for col in columns_to_drop if col in df_cleaned.columns], errors='ignore')
-        if 'Price Breakup' in df_cleaned.columns:
-            df_cleaned.loc[:,'Price Breakup'] = df_cleaned['Price Breakup'].astype(str).str.split("|").str[0]
-            df_cleaned.loc[:,'Price Breakup'] = df_cleaned['Price Breakup'].apply(convert_to_lakh)
-            df_cleaned.rename(columns={'Price Breakup': 'Price Breakup(Lakh)'}, inplace=True)
-        if 'Price per sqft' in df_cleaned.columns:
-            df_cleaned.rename(columns={'Price per sqft': 'Price per sqft(Thousand)'}, inplace=True)
-        property_data_csv_file = f"cleaned_property_data_{datetime_string}.csv"
-        print(df_cleaned)
-        df_cleaned.to_csv(property_data_csv_file, index=False)
-        property_data_container_name = "cleaneddata0908"
-        upload_to_azure_blob(account_name, property_data_container_name, property_data_csv_file, sas_token)
-        logging.info("Property data scraping and upload completed.")
-    except Exception as e:
-        logging.error(f"An error occurred during the processing: {e}")
+    # Save URLs to CSV file
+    urls_df = pd.DataFrame(property_urls, columns=["url"])
+    urls_file_name = f"property_urls_{datetime_string}.csv"
+    urls_df.to_csv(urls_file_name, index=False)
+    logging.info(f"Saved property URLs to {urls_file_name}.")
 
-def generate_url(**kwargs):
-    start_url = "https://www.magicbricks.com/flats-in-bangalore-for-sale-pppfs"
-    max_pages = 2
-    container_name = "urls"
+    # Upload URLs CSV to Azure Blob Storage
+    upload_to_azure_blob(account_name, "scrapedfiles", urls_file_name, sas_token)
 
-    urls = get_urls_from_multiple_pages(start_url, max_pages)
-    
-    if urls:
-        data_list = []
-        for url in urls:
-            data_list.append(extract_property_data(url))
-        
-        # Push property data to XCom
-        ti = kwargs['ti']
-        ti.xcom_push(key='property_data', value=data_list)
-        logging.info(f"Pushed {len(data_list)} entries to XCom.")
-    else:
-        logging.warning("No URLs found to scrape.")
+    # Task 2: Extract data for each property URL
+    all_property_data = []
+    for url in property_urls:
+        property_data = extract_property_data(url)
+        if property_data:
+            all_property_data.append(property_data)
+    logging.info(f"Extracted data for {len(all_property_data)} properties.")
 
-# Define the Airflow tasks
+    # Save property data to CSV file
+    property_data_df = pd.DataFrame(all_property_data)
+    property_data_file_name = f"property_data_{datetime_string}.csv"
+    property_data_df.to_csv(property_data_file_name, index=False)
+    logging.info(f"Saved property data to {property_data_file_name}.")
+
+    # Task 3: Data cleaning and preprocessing
+    property_data_cleaned = property_data_df.copy()
+    property_data_cleaned = merge_similar_columns(property_data_cleaned)
+    property_data_cleaned = remove_columns_with_high_missing_values(property_data_cleaned)
+
+    # Convert price-related columns to numerical format in lakhs
+    for col in property_data_cleaned.columns:
+        if 'price' in col.lower() or 'amount' in col.lower() or 'cost' in col.lower():
+            property_data_cleaned[col] = property_data_cleaned[col].apply(convert_to_lakh)
+
+    # Save cleaned data to CSV file
+    property_data_cleaned_file_name = f"property_data_cleaned_{datetime_string}.csv"
+    property_data_cleaned.to_csv(property_data_cleaned_file_name, index=False)
+    logging.info(f"Saved cleaned property data to {property_data_cleaned_file_name}.")
+
+    # Upload cleaned data CSV to Azure Blob Storage
+    upload_to_azure_blob(account_name, "cleaneddata", property_data_cleaned_file_name, sas_token)
+
+# Define the tasks using PythonOperator
 start_task = PythonOperator(
     task_id='start',
     python_callable=print_start,
     dag=dag,
 )
 
-processing_task = PythonOperator(
-    task_id='processing',
-    python_callable=print_processing,
-    dag=dag,
-)
-
-generate_url_task = PythonOperator(
-    task_id='generate_url_task',
-    python_callable=generate_url,
-    dag=dag,
-)
-
-cleaning_data_task = PythonOperator(
-    task_id='cleaning_data_task',
-    python_callable=clean_data,
+process_task = PythonOperator(
+    task_id='process',
+    python_callable=process_all_data,
     dag=dag,
 )
 
@@ -314,8 +287,5 @@ end_task = PythonOperator(
     dag=dag,
 )
 
-start_task >> generate_url_task >> processing_task >> cleaning_data_task >> end_task
-
-# Required packages
-# azure-identity==1.12.0
-# azure-storage-blob==12.14.1
+# Set task dependencies
+start_task >> process_task >> end_task
