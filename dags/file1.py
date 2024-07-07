@@ -5,7 +5,7 @@ import requests
 import json
 import re
 from datetime import datetime
-import inflect
+# import inflect
 import spacy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, wait_fixed, stop_after_attempt, RetryError
