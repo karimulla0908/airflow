@@ -5,7 +5,6 @@ import requests
 import json
 import re
 from datetime import datetime
-import spacy
 import inflect
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, wait_fixed, stop_after_attempt, RetryError
@@ -18,8 +17,6 @@ import os
 # Initialize the inflect engine
 p = inflect.engine()
 
-# Load the spaCy model
-nlp = spacy.load("en_core_web_sm")
 
 # Setup logging
 import logging
