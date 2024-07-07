@@ -6,6 +6,7 @@ import json
 import re
 from datetime import datetime
 import spacy
+import inflect
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tenacity import retry, wait_fixed, stop_after_attempt, RetryError
 from azure.storage.blob import BlobServiceClient
