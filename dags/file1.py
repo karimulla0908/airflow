@@ -229,7 +229,7 @@ def process_floor_column(floor):
 
 def process_all_data():
     try:
-        start_url = "https://www.magicbricks.com/property-for-sale-rent-in-Bangalore/residential-real-estate-Bangalore"
+        start_url = "https://www.magicbricks.com/flats-in-bangalore-for-sale-pppfs"
         max_pages = 20
         
         # Step 1: Extract property URLs
@@ -271,7 +271,7 @@ def process_all_data():
 
 def upload_to_azure_datalake(container_name, blob_name, sas_token):
     try:
-        blob_service_client = BlobServiceClient(account_url=f"https://your_storage_account_name.blob.core.windows.net", credential=sas_token)
+        blob_service_client = BlobServiceClient(account_url=f"https://cleaneddata0908.blob.core.windows.net", credential=sas_token)
         container_client = blob_service_client.get_container_client(container_name)
 
         local_file_path = blob_name
