@@ -1,53 +1,42 @@
-
-from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from azure.storage.blob import BlobServiceClient
 import pandas as pd
 import numpy as np
 from bs4 import BeautifulSoup
 import requests
 import json
 import re
+from datetime import datetime
+import inflect
+import spacy
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tenacity import retry, wait_fixed, stop_after_attempt, RetryError
+from azure.storage.blob import BlobServiceClient
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from datetime import timedelta
+import os
+
+# Initialize the inflect engine
+p = inflect.engine()
+
+# Load the spaCy model
+nlp = spacy.load("en_core_web_sm")
+
+# Setup logging
 import logging
-
-default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2024, 6, 15, 13, 0),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
-}
-
-# Define the DAG
-dag = DAG(
-    'END-END-MLOPS',
-    default_args=default_args,
-    description='Scraping DAG 0908',
-    schedule=None,
-)
-
-# Define Python functions for the tasks
-def print_start():
-    logging.info("Start of the DAG")
-
-def print_processing():
-    logging.info("Processing task")
-
-def print_end():
-    logging.info("End of the DAG")
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(message)s')
 
 current_datetime = datetime.now()
 datetime_string = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
 
 def merge_similar_columns(df):
+    logging.info("Merging similar columns (singular and plural forms).")
     def get_column_pairs(columns):
         singular_plural_pairs = {}
         for col in columns:
-            if col.endswith('s') and col[:-1] in columns:
-                singular_plural_pairs[col[:-1]] = col
+            singular_form = p.singular_noun(col) or col
+            plural_form = p.plural_noun(col) or col
+            if singular_form in columns and plural_form in columns:
+                singular_plural_pairs[singular_form] = plural_form
         return singular_plural_pairs
 
     columns = df.columns
@@ -55,14 +44,23 @@ def merge_similar_columns(df):
     
     for singular, plural in column_pairs.items():
         if singular in df.columns and plural in df.columns:
+            df[singular] = pd.to_numeric(df[singular], errors='coerce')
+            df[plural] = pd.to_numeric(df[plural], errors='coerce')
             df[singular] = df[[singular, plural]].sum(axis=1, skipna=True)
             df = df.drop(columns=[plural])
     
     return df
 
+def remove_numerical_columns(df):
+    logging.info("Removing numerical columns.")
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
+    df = df.drop(columns=numeric_cols)
+    return df
+
 def remove_columns_with_high_missing_values(df):
+    logging.info("Removing columns with high missing values (70% or more).")
     missing_percentage = df.isnull().mean() * 100
-    columns_to_keep = missing_percentage[missing_percentage < 50].index
+    columns_to_keep = missing_percentage[missing_percentage < 70].index
     df_cleaned = df[columns_to_keep]
     return df_cleaned
 
@@ -71,23 +69,18 @@ def convert_to_lakh(value):
         value = value.strip()
         if 'Lac' in value:
             num = float(re.findall(r"[\d\.]+", value)[0])
-            return num
+            return round(num, 2)
         elif 'Cr' in value:
             num = float(re.findall(r"[\d\.]+", value)[0])
-            return num * 100
+            return round(num * 100, 2)
         elif 'Thousand' in value:
             num = float(re.findall(r"[\d\.]+", value)[0])
-            return num / 100
+            return round(num / 100, 2)
         else:
             return np.nan
     return np.nan
 
-# Azure Blob Storage details
-account_name = "housescrape0908"
-sas_token = "sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-06-28T15:11:48Z&st=2024-06-15T07:11:48Z&spr=https&sig=hFCrUlsiIr58TRew9YsZBUiiYyqJ3zfhutWu%2BPOSc5A%3D"
-
 def extract_urls_from_scripts(html_content):
-    logging.info("Extracting URLs from script tags.")
     try:
         soup = BeautifulSoup(html_content, "html.parser")
         script_tags = soup.find_all("script", type="application/ld+json")
@@ -102,56 +95,45 @@ def extract_urls_from_scripts(html_content):
                         urls.append(url)
                 except json.JSONDecodeError as e:
                     logging.error(f"JSON decode error: {e}")
-        logging.info(f"Found {len(urls)} URLs in script tags.")
         return urls
     except Exception as e:
         logging.error(f"An error occurred while extracting URLs: {e}")
         return []
 
+@retry(wait=wait_fixed(2), stop=stop_after_attempt(3))
+def fetch_url(url):
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response
+
 def get_urls_from_multiple_pages(start_url, max_pages):
-    logging.info(f"Starting to scrape URLs from {max_pages} pages starting at {start_url}.")
+    logging.info(f"Starting URL extraction from {start_url} for {max_pages} pages.")
     all_urls = []
-    for page_num in range(1, max_pages + 1):
-        try:
-            current_url = f"{start_url}?page={page_num}"
-            logging.info(f"Making request to {current_url}.")
-            response = requests.get(current_url, timeout=10)
-            if response.status_code == 200:
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_page = {executor.submit(fetch_url, f"{start_url}?page={page_num}"): page_num for page_num in range(1, max_pages + 1)}
+        for future in as_completed(future_to_page):
+            page_num = future_to_page[future]
+            try:
+                response = future.result()
                 current_urls = extract_urls_from_scripts(response.content)
                 all_urls.extend(current_urls)
-                logging.info(f"Scraped {len(current_urls)} URLs from page {page_num}.")
-            else:
-                logging.error(f"Failed to retrieve page {page_num}. Status code: {response.status_code}")
-                break
-        except requests.RequestException as e:
-            logging.error(f"An error occurred while making a request to page {page_num}: {e}")
-            break
-    logging.info(f"Finished scraping. Total URLs collected: {len(all_urls)}.")
+                logging.info(f"Extracted URLs from page {page_num}.")
+            except RetryError as e:
+                logging.error(f"Failed to retrieve page {page_num} after retries: {e}")
+            except Exception as e:
+                logging.error(f"An error occurred while making a request to page {page_num}: {e}")
     return all_urls
 
-def upload_to_azure_blob(account_name, container_name, source_file_name, sas_token):
-    try:
-        # Construct the BlobServiceClient using the SAS token
-        blob_service_client = BlobServiceClient(account_url=f"https://{account_name}.blob.core.windows.net", credential=sas_token)
-        
-        # Specify the destination blob name as just the file name to upload it directly into the "urls" directory
-        destination_blob_name = f"{source_file_name}"
-
-        # Get the BlobClient for the destination blob
-        blob_client = blob_service_client.get_blob_client(container=container_name, blob=destination_blob_name)
-
-        # Upload the file
-        with open(source_file_name, "rb") as file:
-            blob_client.upload_blob(file, overwrite=True)
-
-        logging.info(f"File {source_file_name} uploaded to Azure Blob Storage as {destination_blob_name}.")
-    except Exception as e:
-        logging.error(f"An error occurred while uploading file to Azure Blob Storage: {e}")
+@retry(wait=wait_fixed(2), stop=stop_after_attempt(3))
+def fetch_property_data(url):
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response
 
 def extract_property_data(url):
     logging.info(f"Extracting property data from {url}.")
     try:
-        response = requests.get(url, timeout=10)
+        response = fetch_property_data(url)
         html_content = response.text
 
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -202,120 +184,140 @@ def extract_property_data(url):
         # Extracting carpet area and price per sqft using regular expressions
         description = soup.get_text()
         carpet_area_match = re.search(r'(\d+)\s*sqft', description)
-        price_per_sqft_match = re.search(r'₹([\d,]+)/sqft', description)
+        price_per_sqft_match = re.search(r'(\d+)\s*per sqft', description)
 
         if carpet_area_match:
             data['Carpet Area'] = carpet_area_match.group(1)
-        else:
-            data['Carpet Area'] = None
-
         if price_per_sqft_match:
-            data['Price per sqft'] = price_per_sqft_match.group(1).replace(',', '')
-        else:
-            data['Price per sqft'] = None
-
-        # Extracting located floor and number of floors
-        floor_info_match = re.search(r'(\d+)\s*\(Out of\s*(\d+)\s*Floors\)', description, re.IGNORECASE)
-        if floor_info_match:
-            data['Located Floor'] = floor_info_match.group(1)
-            data['Number of Floors'] = floor_info_match.group(2)
-        else:
-            data['Located Floor'] = None
-            data['Number of Floors'] = None
-
-        logging.info(f"Extracted data: {data}")
+            data['Price per sqft'] = price_per_sqft_match.group(1)
+        logging.info(f"Successfully extracted data from {url}.")
         return data
     except Exception as e:
-        logging.error(f"An error occurred while extracting property data: {e}")
-        return {}
+        logging.error(f"An error occurred while extracting property data from {url}: {e}")
+        return None
 
-def clean_data(**kwargs):
-    try:
-        ti = kwargs['ti']
-        data_list = ti.xcom_pull(task_ids='generate_url_task', key='property_data')
-        logging.info(f"Data received from XCom: {data_list}")
-
-        if not data_list:
-            logging.error("No data received from XCom.")
-            return
-
-        df = pd.DataFrame(data_list)
-        df = df.loc[:, ~df.columns.str.isdigit()]
-        df = merge_similar_columns(df)
-        df_cleaned = remove_columns_with_high_missing_values(df)
-        if 'Address' in df_cleaned.columns:
-            df_cleaned.loc[:,'Address'] = df_cleaned['Address'].astype(str).str.split(",").str[-2]
-        if 'Flooring' in df_cleaned.columns:
-            df_cleaned.loc[:,'Flooring'] = df_cleaned['Flooring'].astype(str).str.split(",").str[0]
-        columns_to_drop = ['Project', 'Landmarks', 'Floor', 'Developer', 'Project', 'Furnishing', 'Booking Amount']
-        df_cleaned = df_cleaned.drop(columns=[col for col in columns_to_drop if col in df_cleaned.columns], errors='ignore')
-        if 'Price Breakup' in df_cleaned.columns:
-            df_cleaned.loc[:,'Price Breakup'] = df_cleaned['Price Breakup'].astype(str).str.split("|").str[0]
-            df_cleaned.loc[:,'Price Breakup'] = df_cleaned['Price Breakup'].apply(convert_to_lakh)
-            df_cleaned.rename(columns={'Price Breakup': 'Price Breakup(Lakh)'}, inplace=True)
-        if 'Price per sqft' in df_cleaned.columns:
-            df_cleaned.rename(columns={'Price per sqft': 'Price per sqft(Thousand)'}, inplace=True)
-        property_data_csv_file = f"cleaned_property_data_{datetime_string}.csv"
-        print(df_cleaned)
-        df_cleaned.to_csv(property_data_csv_file, index=False)
-        property_data_container_name = "cleaneddata0908"
-        upload_to_azure_blob(account_name, property_data_container_name, property_data_csv_file, sas_token)
-        logging.info("Property data scraping and upload completed.")
-    except Exception as e:
-        logging.error(f"An error occurred during the processing: {e}")
-
-def generate_url(**kwargs):
-    start_url = "https://www.magicbricks.com/flats-in-bangalore-for-sale-pppfs"
-    max_pages = 2
-    container_name = "urls"
-
-    urls = get_urls_from_multiple_pages(start_url, max_pages)
-    
-    if urls:
-        data_list = []
-        for url in urls:
-            data_list.append(extract_property_data(url))
-        
-        # Push property data to XCom
-        ti = kwargs['ti']
-        ti.xcom_push(key='property_data', value=data_list)
-        logging.info(f"Pushed {len(data_list)} entries to XCom.")
+def extract_bangalore_area(address):
+    if not isinstance(address, str):
+        return "Bangalore"
+    match = re.search(r"Bangalore\s*-\s*(\w+)", address)
+    if match:
+        return f"Bangalore - {match.group(1)}"
     else:
-        logging.warning("No URLs found to scrape.")
+        return "Bangalore"
 
-# Define the Airflow tasks
-start_task = PythonOperator(
-    task_id='start',
-    python_callable=print_start,
-    dag=dag,
+def process_floor_column(floor):
+    logging.info("Processing the floors.")
+    current_floor = None
+    total_floors = None
+    
+    if isinstance(floor, str):
+        match = re.match(r'(\w+)\s*of\s*(\d+)', floor)
+        if match:
+            current_floor_str = match.group(1)
+            total_floors = int(match.group(2))
+            
+            if current_floor_str.lower() == 'ground':
+                current_floor = 0
+            elif current_floor_str.lower() == 'basement':
+                current_floor = -1
+            elif current_floor_str.lower() == 'lower basement':
+                current_floor = -2
+            else:
+                current_floor = int(current_floor_str) if current_floor_str.isdigit() else None
+    
+    return current_floor, total_floors
+
+def process_all_data():
+    try:
+        start_url = "https://www.magicbricks.com/property-for-sale-rent-in-Bangalore/residential-real-estate-Bangalore"
+        max_pages = 20
+        
+        # Step 1: Extract property URLs
+        property_urls = get_urls_from_multiple_pages(start_url, max_pages)
+        property_urls_df = pd.DataFrame(property_urls, columns=["URL"])
+        property_urls_filename = f"property_urls_{datetime_string}.csv"
+        property_urls_df.to_csv(property_urls_filename, index=False)
+        logging.info(f"Property URLs saved to {property_urls_filename}.")
+        
+        # Step 2: Extract raw property data
+        raw_property_data = []
+        for url in property_urls:
+            data = extract_property_data(url)
+            if data:
+                raw_property_data.append(data)
+        
+        raw_property_data_df = pd.DataFrame(raw_property_data)
+        raw_property_data_filename = f"raw_property_data_{datetime_string}.csv"
+        raw_property_data_df.to_csv(raw_property_data_filename, index=False)
+        logging.info(f"Raw property data saved to {raw_property_data_filename}.")
+        
+        # Step 3: Clean the data
+        cleaned_data_df = raw_property_data_df.copy()
+        
+        # Data Cleaning Steps
+        cleaned_data_df = remove_columns_with_high_missing_values(cleaned_data_df)
+        cleaned_data_df = merge_similar_columns(cleaned_data_df)
+        cleaned_data_df = remove_numerical_columns(cleaned_data_df)
+        cleaned_data_df['Price'] = cleaned_data_df['Price'].apply(convert_to_lakh)
+        cleaned_data_df['Address'] = cleaned_data_df['Address'].apply(extract_bangalore_area)
+        cleaned_data_df[['Current Floor', 'Total Floors']] = cleaned_data_df['Floor'].apply(lambda x: pd.Series(process_floor_column(x)))
+        
+        cleaned_property_data_filename = f"cleaned_property_data_{datetime_string}.csv"
+        cleaned_data_df.to_csv(cleaned_property_data_filename, index=False)
+        logging.info(f"Cleaned property data saved to {cleaned_property_data_filename}.")
+        
+    except Exception as e:
+        logging.error(f"An error occurred during the data processing: {e}")
+
+def upload_to_azure_datalake(container_name, blob_name, sas_token):
+    try:
+        blob_service_client = BlobServiceClient(account_url=f"https://your_storage_account_name.blob.core.windows.net", credential=sas_token)
+        container_client = blob_service_client.get_container_client(container_name)
+
+        local_file_path = blob_name
+        blob_client = container_client.get_blob_client(blob=blob_name)
+
+        with open(local_file_path, "rb") as data:
+            blob_client.upload_blob(data, overwrite=True)
+        logging.info(f"Successfully uploaded {blob_name} to Azure Data Lake.")
+    except Exception as e:
+        logging.error(f"An error occurred while uploading to Azure Data Lake: {e}")
+
+# Airflow DAG configuration
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 1, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+dag = DAG(
+    'data_processing_and_upload',
+    default_args=default_args,
+    description='Process data and upload to Azure Data Lake',
+    schedule_interval=timedelta(days=1),
 )
 
-processing_task = PythonOperator(
-    task_id='processing',
-    python_callable=print_processing,
+def run_data_processing():
+    process_all_data()
+    
+    sas_token = "your_sas_token"
+    container_name = 'your_container_name'
+    
+    file_names = [
+        f"property_urls_{datetime_string}.csv",
+        f"raw_property_data_{datetime_string}.csv",
+        f"cleaned_property_data_{datetime_string}.csv"
+    ]
+    
+    for file_name in file_names:
+        upload_to_azure_datalake(container_name, file_name, sas_token)
+
+run_task = PythonOperator(
+    task_id='run_data_processing',
+    python_callable=run_data_processing,
     dag=dag,
 )
-
-generate_url_task = PythonOperator(
-    task_id='generate_url_task',
-    python_callable=generate_url,
-    dag=dag,
-)
-
-cleaning_data_task = PythonOperator(
-    task_id='cleaning_data_task',
-    python_callable=clean_data,
-    dag=dag,
-)
-
-end_task = PythonOperator(
-    task_id='end',
-    python_callable=print_end,
-    dag=dag,
-)
-
-start_task >> generate_url_task >> processing_task >> cleaning_data_task >> end_task
-
-# Required packages
-# azure-identity==1.12.0
-# azure-storage-blob==12.14.1
