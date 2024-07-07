@@ -14,17 +14,26 @@ from airflow.operators.python_operator import PythonOperator
 from datetime import timedelta
 import os
 
-# Initialize the inflect engine
 p = inflect.engine()
 
-
-# Setup logging
-import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s:%(message)s')
 
 current_datetime = datetime.now()
 datetime_string = current_datetime.strftime("%Y-%m-%d_%H-%M-%S")
 
+
+def upload_to_azure_datalake(container_name, blob_name, sas_token):
+    try:
+        blob_service_client = BlobServiceClient(account_url=f"https://cleaneddata0908.blob.core.windows.net", credential=sas_token)
+        container_client = blob_service_client.get_container_client(container_name)
+
+        local_file_path = blob_name
+        blob_client = container_client.get_blob_client(blob=blob_name)
+
+        with open(local_file_path, "rb") as data:
+            blob_client.upload_blob(data, overwrite=True)
+        logging.info(f"Successfully uploaded {blob_name} to Azure Data Lake.")
+    except Exception as e:
+        logging.error(f"An error occurred while uploading to Azure Data Lake: {e}")
 def merge_similar_columns(df):
     logging.info("Merging similar columns (singular and plural forms).")
     def get_column_pairs(columns):
@@ -41,8 +50,11 @@ def merge_similar_columns(df):
     
     for singular, plural in column_pairs.items():
         if singular in df.columns and plural in df.columns:
+            # Ensure both columns are numeric
             df[singular] = pd.to_numeric(df[singular], errors='coerce')
             df[plural] = pd.to_numeric(df[plural], errors='coerce')
+            
+            # Sum numeric values
             df[singular] = df[[singular, plural]].sum(axis=1, skipna=True)
             df = df.drop(columns=[plural])
     
@@ -50,6 +62,7 @@ def merge_similar_columns(df):
 
 def remove_numerical_columns(df):
     logging.info("Removing numerical columns.")
+    # Identify columns that are numeric (integers and floats)
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df = df.drop(columns=numeric_cols)
     return df
@@ -208,77 +221,158 @@ def process_floor_column(floor):
     total_floors = None
     
     if isinstance(floor, str):
-        match = re.match(r'(\w+)\s*of\s*(\d+)', floor)
+        match = re.match(r'(\w+)\s+\(Out of (\d+) Floors\)', floor)
         if match:
-            current_floor_str = match.group(1)
+            current_floor = match.group(1)
             total_floors = int(match.group(2))
             
-            if current_floor_str.lower() == 'ground':
+            # Convert textual representation of floors to numerical
+            if current_floor.lower() == 'ground':
                 current_floor = 0
-            elif current_floor_str.lower() == 'basement':
-                current_floor = -1
-            elif current_floor_str.lower() == 'lower basement':
-                current_floor = -2
+            elif current_floor.lower() == 'top':
+                current_floor = total_floors
             else:
-                current_floor = int(current_floor_str) if current_floor_str.isdigit() else None
-    
+                current_floor = int(current_floor)
     return current_floor, total_floors
 
+# Define the categories and keywords for landmark classification
+categories = {
+    "Essentials Hub": ["school", "international school", "high school", "academy", "vidya","Vidyalayam","college","university","clg","Apartment"
+                 "hospital", "clinic", "motherhood","church","mosque","Training"
+                 "railway station", "metro station", "junction", "station","metro","bus","airport","Bus Stop",
+                 "bank","Financial","Bank","temple"],
+    "Urban Framework": ["property", "building", "block", "street","main road","road","bridge","layout","hotel","flyover","residence","park","Lake","Garden","road","pg","circle","Logistics","petrol","fire","nagar","toll","Centre","view point"],
+    "Commercial Sphere": ["market", "mall", "shopping", "complex", "plaza", "store","bazaar","showroom",
+                   "Tech Park","tech park","infotech","Software","IT","Resort","restaurant"]
+}
+
+def categorize_landmark(landmark):
+    logging.info(f"Categorizing landmark: {landmark}")
+    if not isinstance(landmark, str):
+        return "Other"
+    
+    landmark_lower = landmark.lower()
+    for category, keywords in categories.items():
+        for keyword in keywords:
+            if keyword in landmark_lower:
+                return category
+    return "Other"
+
+def process_flooring_column(flooring):
+    logging.info("Processing the flooring types.")
+    if isinstance(flooring, str):
+        # Split by commas and strip whitespaces
+        flooring_types = [f.strip() for f in flooring.split(',')]
+        # Return the first flooring type or 'General' if empty
+        return flooring_types[0] if flooring_types else 'other'
+    else:
+        return 'other'
+    
+def categorize_overlooking(value):
+    if value == 'Not Disclosed':
+        return 'Not Disclosed'
+    elif ', ' in value:
+        return 'Multiple Aspects'
+    else:
+        
+        return 'Single Aspect'
+
 def process_all_data():
-    try:
-        start_url = "https://www.magicbricks.com/flats-in-bangalore-for-sale-pppfs"
-        max_pages = 20
-        
-        # Step 1: Extract property URLs
-        property_urls = get_urls_from_multiple_pages(start_url, max_pages)
-        property_urls_df = pd.DataFrame(property_urls, columns=["URL"])
-        property_urls_filename = f"property_urls_{datetime_string}.csv"
-        property_urls_df.to_csv(property_urls_filename, index=False)
-        logging.info(f"Property URLs saved to {property_urls_filename}.")
-        
-        # Step 2: Extract raw property data
-        raw_property_data = []
-        for url in property_urls:
-            data = extract_property_data(url)
-            if data:
-                raw_property_data.append(data)
-        
-        raw_property_data_df = pd.DataFrame(raw_property_data)
-        raw_property_data_filename = f"raw_property_data_{datetime_string}.csv"
-        raw_property_data_df.to_csv(raw_property_data_filename, index=False)
-        logging.info(f"Raw property data saved to {raw_property_data_filename}.")
-        
-        # Step 3: Clean the data
-        cleaned_data_df = raw_property_data_df.copy()
-        
-        # Data Cleaning Steps
-        cleaned_data_df = remove_columns_with_high_missing_values(cleaned_data_df)
-        cleaned_data_df = merge_similar_columns(cleaned_data_df)
-        cleaned_data_df = remove_numerical_columns(cleaned_data_df)
-        cleaned_data_df['Price'] = cleaned_data_df['Price'].apply(convert_to_lakh)
-        cleaned_data_df['Address'] = cleaned_data_df['Address'].apply(extract_bangalore_area)
-        cleaned_data_df[['Current Floor', 'Total Floors']] = cleaned_data_df['Floor'].apply(lambda x: pd.Series(process_floor_column(x)))
-        
-        cleaned_property_data_filename = f"cleaned_property_data_{datetime_string}.csv"
-        cleaned_data_df.to_csv(cleaned_property_data_filename, index=False)
-        logging.info(f"Cleaned property data saved to {cleaned_property_data_filename}.")
-        
-    except Exception as e:
-        logging.error(f"An error occurred during the data processing: {e}")
+    start_url = "https://www.magicbricks.com/flats-in-bangalore-for-sale-pppfs"
+    max_pages = 30  # Adjust the number of pages to scrape
 
-def upload_to_azure_datalake(container_name, blob_name, sas_token):
-    try:
-        blob_service_client = BlobServiceClient(account_url=f"https://cleaneddata0908.blob.core.windows.net", credential=sas_token)
-        container_client = blob_service_client.get_container_client(container_name)
+    logging.info(f"Starting data extraction from {start_url}.")
 
-        local_file_path = blob_name
-        blob_client = container_client.get_blob_client(blob=blob_name)
+    property_urls = get_urls_from_multiple_pages(start_url, max_pages)
 
-        with open(local_file_path, "rb") as data:
-            blob_client.upload_blob(data, overwrite=True)
-        logging.info(f"Successfully uploaded {blob_name} to Azure Data Lake.")
-    except Exception as e:
-        logging.error(f"An error occurred while uploading to Azure Data Lake: {e}")
+    # Save URLs to CSV file
+    urls_df = pd.DataFrame(property_urls, columns=["url"])
+    urls_file_name = f"property_urls_{datetime_string}.csv"
+    urls_df.to_csv(urls_file_name, index=False)
+    logging.info(f"Saved property URLs to {urls_file_name}.")
+
+    # Extract data for each property URL
+    all_property_data = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_url = {executor.submit(extract_property_data, url): url for url in property_urls}
+        for future in as_completed(future_to_url):
+            url = future_to_url[future]
+            try:
+                property_data = future.result()
+                if property_data:
+                    all_property_data.append(property_data)
+            except Exception as e:
+                logging.error(f"An error occurred while processing URL {url}: {e}")
+
+    # Save raw property data to CSV file
+    raw_property_data_df = pd.DataFrame(all_property_data)
+    raw_property_data_file_name = f"raw_property_data_{datetime_string}.csv"
+    raw_property_data_df.to_csv(raw_property_data_file_name, index=False)
+    logging.info(f"Saved raw property data to {raw_property_data_file_name}.")
+
+    # Clean and process the DataFrame
+    property_data_df = raw_property_data_df.copy()
+
+    logging.info("Starting data cleaning and processing.")
+
+    # Remove numerical columns
+    property_data_df = remove_numerical_columns(property_data_df)
+
+    print(property_data_df.columns)
+
+    # Convert price columns to lakh
+    for column in property_data_df.columns:
+        if 'price' in column.lower() or 'amount' in column.lower():
+            property_data_df[column] = property_data_df[column].apply(convert_to_lakh)
+            
+    if 'Address' in property_data_df.columns:
+        property_data_df['Address'] = property_data_df['Address'].apply(extract_bangalore_area)
+
+    # Extract current floor and total floors
+    property_data_df[['Current Floor', 'Total Floors']] = property_data_df['Floor'].apply(lambda x: pd.Series(process_floor_column(x)))
+
+    property_data_df = property_data_df.drop(columns=['Floor'])
+
+    # Merge similar columns
+    property_data_df = merge_similar_columns(property_data_df)
+
+    if 'Flooring' in property_data_df.columns:
+        property_data_df['Processed Flooring'] = property_data_df['Flooring'].apply(process_flooring_column)
+    
+    if 'Lift' in property_data_df.columns:
+        property_data_df['Lifts'] = property_data_df['Lift'].fillna(0)
+
+    if 'covered-parking' in property_data_df.columns:
+        # Replace numbers with 'Yes' and missing values with 'No'
+        property_data_df['covered-parking'] = property_data_df['covered-parking'].apply(lambda x: 'Yes' if pd.notna(x) and x != 0 else 'No')
+
+    if 'Age of Construction' in property_data_df.columns:
+        def categorize_age(age):
+            if isinstance(age, str) and age.lower() in ["new construction", "under construction"]:
+                return age
+            else:
+                return "Old Construction"
+        property_data_df['Construction Age'] = property_data_df['Age of Construction'].apply(categorize_age)
+        property_data_df.drop(columns=["Age of Construction"],inplace=True)
+
+    # Categorize landmarks
+    if 'Landmarks' in property_data_df.columns:
+        property_data_df['Landmark Category'] = property_data_df['Landmarks'].apply(categorize_landmark)
+
+    columns_to_drop = ['Landmarks', 'Furnishing', 'Project', 'Developer', 'Flooring', 'Booking Amount', 'Super Built-up Area', 'Loan Offered','Lift',"Car parking"]
+
+    if 'Overlooking' in property_data_df.columns:
+        property_data_df['Overlooking']=property_data_df['Overlooking'].fillna("Not Disclosed")
+        property_data_df.loc[:, 'Overlooking'] = property_data_df['Overlooking'].apply(categorize_overlooking)
+
+    property_data_df = property_data_df.drop(columns=[col for col in columns_to_drop if col in property_data_df.columns])
+    property_data_df = remove_columns_with_high_missing_values(property_data_df)
+    # Save the final cleaned data to CSV file
+    cleaned_property_data_file_name = f"cleaned_property_data_{datetime_string}.csv"
+    property_data_df.to_csv(cleaned_property_data_file_name, index=False)
+    logging.info(f"Saved cleaned property data to {cleaned_property_data_file_name}.")
+    print(property_data_df.columns)
+
 
 # Airflow DAG configuration
 default_args = {
