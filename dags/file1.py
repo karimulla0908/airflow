@@ -34,6 +34,7 @@ def upload_to_azure_datalake(container_name, blob_name, sas_token):
         logging.info(f"Successfully uploaded {blob_name} to Azure Data Lake.")
     except Exception as e:
         logging.error(f"An error occurred while uploading to Azure Data Lake: {e}")
+
 def merge_similar_columns(df):
     logging.info("Merging similar columns (singular and plural forms).")
     def get_column_pairs(columns):
@@ -392,23 +393,8 @@ dag = DAG(
     schedule_interval=timedelta(days=1),
 )
 
-def run_data_processing():
-    process_all_data()
-    
-    sas_token = "your_sas_token"
-    container_name = 'your_container_name'
-    
-    file_names = [
-        f"property_urls_{datetime_string}.csv",
-        f"raw_property_data_{datetime_string}.csv",
-        f"cleaned_property_data_{datetime_string}.csv"
-    ]
-    
-    for file_name in file_names:
-        upload_to_azure_datalake(container_name, file_name, sas_token)
-
 run_task = PythonOperator(
     task_id='run_data_processing',
-    python_callable=run_data_processing,
+    python_callable=process_all_data,
     dag=dag,
 )
