@@ -37,5 +37,7 @@ with DAG(
         timeout_seconds=3600,  # Adjust timeout as per your notebook execution time
     )
 
-    # Set task dependencies if needed
-    run_databricks_notebook
+    # If there are more tasks, set task dependencies here
+    # run_databricks_notebook >> another_task
+
+    run_databricks_notebook  # This line sets the task in the DAG
