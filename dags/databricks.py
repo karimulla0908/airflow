@@ -1,5 +1,5 @@
 from airflow import DAG
-from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
+from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
 from datetime import datetime, timedelta
 
 # Define your DAG arguments
@@ -23,9 +23,14 @@ with DAG(
 ) as dag:
 
     # Define the task to run the Databricks notebook
-    run_databricks_notebook = DatabricksRunNowOperator(
+    run_databricks_notebook = DatabricksSubmitRunOperator(
         task_id='run_databricks_notebook_task',
-        databricks_conn_id='databricks_Default',  # Connection ID configured in Airflow
+        databricks_conn_id='databricks_default',  # Connection ID configured in Airflow
+        new_cluster={
+            'spark_version': '7.3.x-scala2.12',
+            'node_type_id': 'Standard_DS3_v2',
+            'num_workers': 2
+        },
         notebook_task={
             'notebook_path': '/Workspace/Users/karimullas.de03@praxis.ac.in/Housepricepredicition_notebook_2',  # Replace with your notebook path
         },
@@ -34,4 +39,3 @@ with DAG(
 
     # Set task dependencies if needed
     run_databricks_notebook
-
