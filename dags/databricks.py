@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': None,
+    'start_date': datetime(2024, 7, 13),  # Adjusted start_date
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
@@ -16,7 +16,7 @@ default_args = {
 }
 
 dag = DAG(
-    'rundatabricksnotebook0908',  # Removed trailing space
+    'rundatabricksnotebook0908',
     default_args=default_args,
     description='Databricks',
     schedule_interval=timedelta(days=1),
@@ -32,13 +32,35 @@ end_task = DummyOperator(
     dag=dag,
 )
 
-# Define ExternalTaskSensor to wait for the completion of the prerequisite DAG
-sensor_task = BaseSensorOperator(
+# Define function-based CustomSensor to wait for the completion of the prerequisite DAG
+def external_task_completion_sensor(task_id, external_dag_id, external_task_id, execution_delta, timeout, poke_interval, dag):
+    def poke_fn(context):
+        execution_date = context['execution_date']
+        external_dag_run = context['dag'].get_dagrun(
+            external_dag_id,
+            execution_date - execution_delta,
+            execution_date + execution_delta
+        )
+        if not external_dag_run:
+            return False
+        external_task_instance = external_dag_run.get_task_instance(external_task_id)
+        return external_task_instance.is_complete()
+
+    return BaseSensorOperator(
+        task_id=task_id,
+        poke_interval=poke_interval,
+        timeout=timeout,
+        poke_fn=poke_fn,
+        dag=dag,
+    )
+
+sensor_task = external_task_completion_sensor(
     task_id='wait_for_completion_of_other_dag',
     external_dag_id='hello_world',  # Replace with the ID of the prerequisite DAG
     external_task_id='say_hello',  # Replace with the task ID in the other DAG to wait for
     execution_delta=timedelta(seconds=20),  # Wait for 20 seconds after completion
     timeout=3600,  # Timeout after 1 hour if the other DAG doesn't complete
+    poke_interval=30,  # Check every 30 seconds for task completion
     dag=dag,
 )
 
