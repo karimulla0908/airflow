@@ -29,7 +29,7 @@ with DAG(
         new_cluster={
             'spark_version': '7.3.x-scala2.12',
             'node_type_id': 'Standard_DS3_v2',
-            'num_workers': 2
+            'num_workers': 1
         },
         notebook_task={
             'notebook_path': '/Workspace/Users/karimullas.de03@praxis.ac.in/Housepricepredicition_notebook_2',  # Replace with your notebook path
