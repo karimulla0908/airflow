@@ -45,7 +45,7 @@ end_task = DummyOperator(
 # }
 
 notebook_task_params = {
-    'new_cluster': "Karimulla Shaikh's Cluster",
+    'existing_cluster_id': "Karimulla Shaikh's Cluster",
     'notebook_task': {
         'notebook_path': '/Workspace/Users/karimullas.de03@praxis.ac.in/Housepricepredicitionnotebook2'
     }
