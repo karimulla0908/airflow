@@ -14,13 +14,6 @@ default_args = {
     'retry_delay': timedelta(minutes=10),
 }
 
-start_task = DummyOperator(
-        task_id='start_task',
-    )
-end_task = DummyOperator(
-        task_id='end_task',
-    )
-
 # Define your DAG
 with DAG(
     'run_databricks_notebook',
@@ -30,32 +23,41 @@ with DAG(
     catchup=False,
 ) as dag:
 
-new_cluster = {
-    'name':'test',
-    'spark_version':"7.6.x-scala2.12",
-    "node_type_id":"Standard-DS3_v2",
-    "num_workers":0,
-    "spark_conf":{
-        "spark.databricks.cluster.profile":"singleNode",
-        "spark.master":"local[*]"
-    },
-    "custom_tags":{
-        "TeamName":"MLOPS Project"
+    start_task = DummyOperator(
+        task_id='start_task',
+        dag=dag,
+    )
+
+    end_task = DummyOperator(
+        task_id='end_task',
+        dag=dag,
+    )
+
+    new_cluster = {
+        'spark_version': '7.6.x-scala2.12',
+        'node_type_id': 'Standard_DS3_v2',
+        'num_workers': 0,
+        'spark_conf': {
+            'spark.databricks.cluster.profile': 'singleNode',
+            'spark.master': 'local[*]'
+        },
+        'custom_tags': {
+            'TeamName': 'MLOPS Project'
+        }
     }
-}
-notebook_task_params = {
-    'new_cluster':new_cluster,
-    'notebook_task':{
-        'notebook_path':'/Users/karimullas.de03@praxis.ac.in/Housepricepredicition_notebook_2'
+
+    notebook_task_params = {
+        'new_cluster': new_cluster,
+        'notebook_task': {
+            'notebook_path': '/Users/karimullas.de03@praxis.ac.in/Housepricepredicition_notebook_2'
+        }
     }
-}
 
-notebook_task = DatabricksSubmitRunOperator(
-    task_id="Airflow_model_run",
-    databricks_conn_id="databricks_default",
-    dag=dag,
-    json = notebook_task_params)
-)
+    notebook_task = DatabricksSubmitRunOperator(
+        task_id="airflow_model_run",
+        databricks_conn_id="databricks_default",
+        dag=dag,
+        json=notebook_task_params
+    )
 
-
-start_task >> Airflow_model_run >> end_task
+    start_task >> notebook_task >> end_task
