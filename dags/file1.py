@@ -14,6 +14,23 @@ from airflow.operators.python_operator import PythonOperator
 from datetime import timedelta
 import os
 
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': datetime(2023, 1, 1),
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'retries': 1,
+    'retry_delay': timedelta(minutes=5),
+}
+
+dag = DAG(
+    'data_processing_and_upload',
+    default_args=default_args,
+    description='Process data and upload to Azure Data Lake',
+    schedule_interval=timedelta(days=1),
+)
+
 p = inflect.engine()
 
 
@@ -375,27 +392,10 @@ def process_all_data():
     logging.info(f"Saved cleaned property data to {cleaned_property_data_file_name}.")
     print(property_data_df.columns)
 
-
-# Airflow DAG configuration
-default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2023, 1, 1),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5),
-}
-
-dag = DAG(
-    'data_processing_and_upload',
-    default_args=default_args,
-    description='Process data and upload to Azure Data Lake',
-    schedule_interval=timedelta(days=1),
-)
-
 run_task = PythonOperator(
     task_id='run_data_processing',
     python_callable=process_all_data,
     dag=dag,
 )
+
+run_task
