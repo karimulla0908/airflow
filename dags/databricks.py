@@ -31,21 +31,21 @@ end_task = DummyOperator(
     dag=dag,
 )
 
-new_cluster = {
-    'spark_version': '7.6.x-scala2.12',
-    'node_type_id': 'Standard_DS3_v2',
-    'num_workers': 0,
-    'spark_conf': {
-        'spark.databricks.cluster.profile': 'singleNode',
-        'spark.master': 'local[*]'
-    },
-    'custom_tags': {
-        'TeamName': 'MLOPS Project'
-    }
-}
+# new_cluster = {
+#     'spark_version': '7.6.x-scala2.12',
+#     'node_type_id': 'Standard_DS3_v2',
+#     'num_workers': 0,
+#     'spark_conf': {
+#         'spark.databricks.cluster.profile': 'singleNode',
+#         'spark.master': 'local[*]'
+#     },
+#     'custom_tags': {
+#         'TeamName': 'MLOPS Project'
+#     }
+# }
 
 notebook_task_params = {
-    'new_cluster': new_cluster,
+    'new_cluster': "Karimulla Shaikh's Cluster",
     'notebook_task': {
         'notebook_path': '/Workspace/Users/karimullas.de03@praxis.ac.in/Housepricepredicitionnotebook2'
     }
