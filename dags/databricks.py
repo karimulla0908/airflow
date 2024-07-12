@@ -58,5 +58,5 @@ notebooktask = DatabricksSubmitRunOperator(
     timeout_seconds=3600
 )
 
-# Define the task dependency
-start_task >> start_task >> notebooktask >> end_task
+# Define the task dependency correctly
+start_task >> notebooktask >> end_task
