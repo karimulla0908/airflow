@@ -30,22 +30,29 @@ with DAG(
     catchup=False,
 ) as dag:
 
-    # Define the task to run the Databricks notebook
-    run_databricks_notebook = DatabricksSubmitRunOperator(
-        task_id='run_databricks_notebook_task',
-        databricks_conn_id='databricks_default',  # Connection ID configured in Airflow
-        new_cluster={
-            'spark_version': '7.3.x-scala2.12',
-            'node_type_id': 'Standard_DS3_v2',
-            'num_workers': 1
-        },
-        notebook_task={
-            'notebook_path': '/Workspace/Users/karimullas.de03@praxis.ac.in/Housepricepredicition_notebook_2',  # Replace with your notebook path
-        },
-        timeout_seconds=3600,  # Adjust timeout as per your notebook execution time
-    )
+new_cluster = {
+    'name':'test',
+    'spark_version':"7.6.x-scala2.12",
+    "node_type_id":"Standard-DS3_v2",
+    "num_workers":0,
+    "spark_conf":{
+        "spark.databricks.cluster.profile":"singleNode",
+        "spark.master":"local[*]"
+    },
+    "custom_tags":{
+        "TeamName":"MLOPS Project"
+    }
+}
+notebook_task_params = {
+    'new_cluster':new_cluster,
+    'notebook_task':{
+        'notebook_path':'/Users/karimullas.de03@praxis.ac.in/Housepricepredicition_notebook_2'
+    }
+}
 
-    # If there are more tasks, set task dependencies here
-    # run_databricks_notebook >> another_task
-
-    start_task >> run_databricks_notebook >> end_task  # This line sets the task in the DAG
+notebook_task = DatabricksSubmitRunOperator(
+    task_id="Airflow model run",
+    databricks_conn_id="databricks_default",
+    dag=dag,
+    json = notebook_task_params)
+)
