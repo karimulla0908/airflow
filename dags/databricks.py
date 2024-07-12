@@ -1,4 +1,5 @@
 from airflow import DAG
+from airflow.operators.dummy import DummyOperator
 from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
 from datetime import datetime, timedelta
 
