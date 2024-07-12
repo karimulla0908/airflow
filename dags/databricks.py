@@ -1,6 +1,6 @@
 from airflow import DAG
 from airflow.operators.dummy import DummyOperator
-from airflow.operators.sensors import ExternalTaskSensor
+from airflow.sensors.base import BaseSensorOperator
 from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
 from datetime import datetime, timedelta
 
@@ -33,7 +33,7 @@ end_task = DummyOperator(
 )
 
 # Define ExternalTaskSensor to wait for the completion of the prerequisite DAG
-sensor_task = ExternalTaskSensor(
+sensor_task = BaseSensorOperator(
     task_id='wait_for_completion_of_other_dag',
     external_dag_id='hello_world',  # Replace with the ID of the prerequisite DAG
     external_task_id='say_hello',  # Replace with the task ID in the other DAG to wait for
