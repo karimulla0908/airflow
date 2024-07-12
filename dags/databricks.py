@@ -10,7 +10,7 @@ default_args = {
     'email_on_retry': False,
     'start_date': datetime(2024, 7, 13),  # Adjust start date as per your requirement
     'retries': 1,
-    'retry_delay': timedelta(minutes=5),
+    'retry_delay': timedelta(minutes=10),
 }
 
 # Define your DAG
