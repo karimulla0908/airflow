@@ -51,8 +51,11 @@ notebook_task_params = {
 }
 
 notebook_task = DatabricksSubmitRunOperator(
-    task_id="Airflow model run",
+    task_id="Airflow_model_run",
     databricks_conn_id="databricks_default",
     dag=dag,
     json = notebook_task_params)
 )
+
+
+start_task >> Airflow_model_run >> end_task
