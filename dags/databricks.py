@@ -59,4 +59,4 @@ notebooktask = DatabricksSubmitRunOperator(
 )
 
 # Define the task dependency correctly
-start_task >> notebooktask >> end_task
+notebooktask
