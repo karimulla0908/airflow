@@ -32,7 +32,7 @@ end_task = DummyOperator(
 )
 
 new_cluster = {
-    'spark_version': '9.2.x-scala2.12',
+    'spark_version': '12.2.x-scala2.12',
     'node_type_id': 'Standard_DS3_v2',
     'num_workers': 0,
     'spark_conf': {
