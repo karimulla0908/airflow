@@ -1,6 +1,5 @@
 from airflow import DAG
 from airflow.operators.bash import BashOperator
-from airflow.sensors.base import BaseSensorOperator
 from datetime import datetime, timedelta
 
 # Define your DAG arguments
