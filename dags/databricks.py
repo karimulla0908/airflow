@@ -7,33 +7,32 @@ from datetime import datetime, timedelta
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
+    'start_date': datetime(2023, 1, 1),
     'email_on_failure': False,
     'email_on_retry': False,
-    'start_date': datetime(2024, 7, 13),  # Adjust start date as per your requirement
     'retries': 1,
-    'retry_delay': timedelta(minutes=10),
+    'retry_delay': timedelta(minutes=5),
 }
 
-# Define your DAG
-with DAG(
-    'run_databricks_notebook',
+dag = DAG(
+    'run_databricks_notebook ',
     default_args=default_args,
-    description='Run Databricks Notebook DAG',
-    schedule_interval=None,  # Set your desired schedule interval
-    catchup=False,
-) as dag:
+    description='Databricks',
+    schedule_interval=timedelta(days=1),
+)
 
-    start_task = DummyOperator(
+
+start_task = DummyOperator(
         task_id='start_task',
         dag=dag,
     )
 
-    end_task = DummyOperator(
+end_task = DummyOperator(
         task_id='end_task',
         dag=dag,
     )
 
-    new_cluster = {
+new_cluster = {
         'spark_version': '7.6.x-scala2.12',
         'node_type_id': 'Standard_DS3_v2',
         'num_workers': 0,
@@ -46,18 +45,18 @@ with DAG(
         }
     }
 
-    notebook_task_params = {
+notebook_task_params = {
         'new_cluster': new_cluster,
         'notebook_task': {
             'notebook_path': '/Users/karimullas.de03@praxis.ac.in/Housepricepredicition_notebook_2'
         }
     }
 
-    notebook_task = DatabricksSubmitRunOperator(
+notebook_task = DatabricksSubmitRunOperator(
         task_id="airflow_model_run",
         databricks_conn_id="databricks_default",
         dag=dag,
         json=notebook_task_params
     )
 
-    start_task >> notebook_task >> end_task
+start_task >> notebook_task >> end_task
