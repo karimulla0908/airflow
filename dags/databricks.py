@@ -15,7 +15,7 @@ default_args = {
 }
 
 dag = DAG(
-    'run_databricks_notebook ',
+    'rundatabricksnotebook ',
     default_args=default_args,
     description='Databricks',
     schedule_interval=timedelta(days=1),
