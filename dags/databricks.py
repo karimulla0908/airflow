@@ -15,7 +15,7 @@ default_args = {
 }
 
 dag = DAG(
-    'rundatabricksnotebook',  # Removed trailing space
+    'rundatabricksnotebook0908',  # Removed trailing space
     default_args=default_args,
     description='Databricks',
     schedule_interval=timedelta(days=1),
