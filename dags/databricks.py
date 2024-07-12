@@ -13,6 +13,13 @@ default_args = {
     'retry_delay': timedelta(minutes=10),
 }
 
+start_task = DummyOperator(
+        task_id='start_task',
+    )
+end_task = DummyOperator(
+        task_id='end_task',
+    )
+
 # Define your DAG
 with DAG(
     'run_databricks_notebook',
@@ -40,4 +47,4 @@ with DAG(
     # If there are more tasks, set task dependencies here
     # run_databricks_notebook >> another_task
 
-    run_databricks_notebook  # This line sets the task in the DAG
+    start_task >> run_databricks_notebook >> end_task  # This line sets the task in the DAG
