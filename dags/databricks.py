@@ -32,25 +32,30 @@ end_task = DummyOperator(
     dag=dag,
 )
 
+# Define function-based poke function for the CustomSensor
+def poke_fn(task_instance, **kwargs):
+    external_dag_id = kwargs.get('external_dag_id')
+    external_task_id = kwargs.get('external_task_id')
+    execution_delta = kwargs.get('execution_delta')
+
+    execution_date = kwargs['execution_date']
+    external_dag_run = task_instance.get_dagrun(
+        external_dag_id,
+        execution_date - execution_delta,
+        execution_date + execution_delta
+    )
+    if not external_dag_run:
+        return False
+    external_task_instance = external_dag_run.get_task_instance(external_task_id)
+    return external_task_instance.is_complete()
+
 # Define function-based CustomSensor to wait for the completion of the prerequisite DAG
 def external_task_completion_sensor(task_id, external_dag_id, external_task_id, execution_delta, timeout, poke_interval, dag):
-    def poke_fn(context):
-        execution_date = context['execution_date']
-        external_dag_run = context['dag'].get_dagrun(
-            external_dag_id,
-            execution_date - execution_delta,
-            execution_date + execution_delta
-        )
-        if not external_dag_run:
-            return False
-        external_task_instance = external_dag_run.get_task_instance(external_task_id)
-        return external_task_instance.is_complete()
-
     return BaseSensorOperator(
         task_id=task_id,
         poke_interval=poke_interval,
         timeout=timeout,
-        poke_fn=poke_fn,
+        poke_fn=lambda task_instance, **kwargs: poke_fn(task_instance, external_dag_id=external_dag_id, external_task_id=external_task_id, execution_delta=execution_delta),
         dag=dag,
     )
 
