@@ -32,34 +32,27 @@ end_task = DummyOperator(
     dag=dag,
 )
 
-# Define function-based poke function for the CustomSensor
-def poke_fn(task_instance, **kwargs):
-    external_dag_id = kwargs.get('external_dag_id')
-    external_task_id = kwargs.get('external_task_id')
-    execution_delta = kwargs.get('execution_delta')
+# Define CustomSensor to wait for the completion of the prerequisite DAG
+class ExternalTaskCompletionSensor(BaseSensorOperator):
+    def __init__(self, external_dag_id, external_task_id, execution_delta, *args, **kwargs):
+        self.external_dag_id = external_dag_id
+        self.external_task_id = external_task_id
+        self.execution_delta = execution_delta
+        super().__init__(*args, **kwargs)
 
-    execution_date = kwargs['execution_date']
-    external_dag_run = task_instance.get_dagrun(
-        external_dag_id,
-        execution_date - execution_delta,
-        execution_date + execution_delta
-    )
-    if not external_dag_run:
-        return False
-    external_task_instance = external_dag_run.get_task_instance(external_task_id)
-    return external_task_instance.is_complete()
+    def poke(self, context):
+        execution_date = context['execution_date']
+        external_dag_run = self.get_dagrun(
+            self.external_dag_id,
+            execution_date - self.execution_delta,
+            execution_date + self.execution_delta
+        )
+        if not external_dag_run:
+            return False
+        external_task_instance = external_dag_run.get_task_instance(self.external_task_id)
+        return external_task_instance.is_complete()
 
-# Define function-based CustomSensor to wait for the completion of the prerequisite DAG
-def external_task_completion_sensor(task_id, external_dag_id, external_task_id, execution_delta, timeout, poke_interval, dag):
-    return BaseSensorOperator(
-        task_id=task_id,
-        poke_interval=poke_interval,
-        timeout=timeout,
-        poke_fn=lambda task_instance, **kwargs: poke_fn(task_instance, external_dag_id=external_dag_id, external_task_id=external_task_id, execution_delta=execution_delta),
-        dag=dag,
-    )
-
-sensor_task = external_task_completion_sensor(
+sensor_task = ExternalTaskCompletionSensor(
     task_id='wait_for_completion_of_other_dag',
     external_dag_id='hello_world',  # Replace with the ID of the prerequisite DAG
     external_task_id='say_hello',  # Replace with the task ID in the other DAG to wait for
