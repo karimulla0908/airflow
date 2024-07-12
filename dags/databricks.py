@@ -1,5 +1,6 @@
 from airflow import DAG
 from airflow.operators.dummy import DummyOperator
+from airflow.operators.sensors import ExternalTaskSensor
 from airflow.providers.databricks.operators.databricks import DatabricksSubmitRunOperator
 from datetime import datetime, timedelta
 
@@ -31,9 +32,19 @@ end_task = DummyOperator(
     dag=dag,
 )
 
+# Define ExternalTaskSensor to wait for the completion of the prerequisite DAG
+sensor_task = ExternalTaskSensor(
+    task_id='wait_for_completion_of_other_dag',
+    external_dag_id='hello_world',  # Replace with the ID of the prerequisite DAG
+    external_task_id='say_hello',  # Replace with the task ID in the other DAG to wait for
+    execution_delta=timedelta(seconds=20),  # Wait for 20 seconds after completion
+    timeout=3600,  # Timeout after 1 hour if the other DAG doesn't complete
+    dag=dag,
+)
+
 new_cluster = {
     'spark_version': '12.2.x-scala2.12',
-    'node_type_id': 'Standard_DS3_v2'
+    'node_type_id': 'Standard_DS3_v2',  # Adjust as per your requirements
     'spark_conf': {
         'spark.databricks.cluster.profile': 'singleNode',
         'spark.master': 'local[*]'
@@ -58,4 +69,5 @@ notebooktask = DatabricksSubmitRunOperator(
     timeout_seconds=3600
 )
 
-start_task >> notebooktask >> end_task
+# Define the task dependency
+sensor_task >> start_task >> notebooktask >> end_task
