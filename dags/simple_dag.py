@@ -1,5 +1,6 @@
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from datetime import datetime, timedelta
 
 # Define your DAG arguments
@@ -28,5 +29,15 @@ hello_task = BashOperator(
     dag=dag,
 )
 
+start_task = DummyOperator(task_id='start_task', dag=dag)
+
+end_task = DummyOperator(task_id='end_task', dag=dag)
+
+trigger_dag2 = TriggerDagRunOperator(
+    task_id='trigger_dag2',
+    trigger_dag_id='rundatabricksnotebook0908',  # The DAG ID of the DAG to trigger
+    dag=dag1,
+)
+
 # Define the task dependencies
-hello_task
+start_task >> hello_task >> trigger_dag2 >> end_task
