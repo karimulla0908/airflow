@@ -46,7 +46,7 @@ new_cluster = {
 notebook_task_params = {
     'new_cluster': new_cluster,
     'notebook_task': {
-        'notebook_path': '/Workspace/Users/karimullas.de03@praxis.ac.in/Housepricepredicitionnotebook2'
+        'notebook_path': '/Workspace/Users/as23aeb@herts.ac.uk/Housepricepredicition_notebook_2'
     }
 }
 
