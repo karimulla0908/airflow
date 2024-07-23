@@ -34,6 +34,7 @@ end_task = DummyOperator(
 new_cluster = {
     'spark_version': '12.2.x-scala2.12',
     'node_type_id': 'Standard_DS3_v2',
+    'num_workers': 1,  # Specify the number of workers
     'spark_conf': {
         'spark.databricks.cluster.profile': 'singleNode',
         'spark.master': 'local[*]'
@@ -59,4 +60,4 @@ notebooktask = DatabricksSubmitRunOperator(
 )
 
 # Define the task dependency correctly
-notebooktask
+start_task >> notebooktask >> end_task
