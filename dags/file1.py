@@ -388,7 +388,7 @@ def process_all_data():
     # Save the final cleaned data to CSV file
     cleaned_property_data_file_name = f"cleaned_property_data_{datetime_string}.csv"
     property_data_df.to_csv(cleaned_property_data_file_name, index=False)
-    upload_to_azure_datalake("cleaneddata0908",cleaned_property_data_file_name,"sv=2022-11-02&ss=bfqt&srt=sco&sp=rwdlacupyx&se=2024-10-10T02:48:28Z&st=2024-07-07T18:48:28Z&spr=https&sig=ssfStI2tYcmP1CsYqv6sIeDhjJwqLwWDFn6N6oTezRk%3D")
+    upload_to_azure_datalake("cleaneddata0908",cleaned_property_data_file_name,"sp=racwdlmeop&st=2024-08-05T14:26:29Z&se=2024-08-21T22:26:29Z&spr=https&sv=2022-11-02&sr=c&sig=iUcnz1Uwlvsv46mH2bLtXrhw%2Ff87MqmCBG%2FV33akmaY%3D")
     logging.info(f"Saved cleaned property data to {cleaned_property_data_file_name}.")
     print(property_data_df.columns)
 
