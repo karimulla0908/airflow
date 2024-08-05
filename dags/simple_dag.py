@@ -17,7 +17,7 @@ default_args = {
 
 # Define the DAG
 dag = DAG(
-    'data_scraping',
+    'data scraping',
     default_args=default_args,
     description='A simple hello world DAG',
     schedule_interval=timedelta(days=1),
@@ -25,7 +25,7 @@ dag = DAG(
 
 # Define the task
 hello_task = BashOperator(
-    task_id='data_scraping_task',
+    task_id='data scraping task',
     bash_command='echo "Hello, World!"',
     dag=dag,
 )
