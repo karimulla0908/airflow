@@ -25,7 +25,7 @@ dag = DAG(
 
 # Define the task
 hello_task = BashOperator(
-    task_id='data_scraping_task',
+    task_id='data',
     bash_command='echo "Hello, World!"',
     dag=dag,
 )
@@ -41,4 +41,4 @@ trigger_dag2 = TriggerDagRunOperator(
 )
 
 # Define the task dependencies
-start_task >> data_scraping_task >> databricks_task >> end_task
+start_task >> data >> databricks_task >> end_task
