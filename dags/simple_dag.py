@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': 05-08-2024,
+    'start_date': (2024,8,5),
     'email_on_failure': False,
     'email_on_retry': False,
     'retries': 1,
