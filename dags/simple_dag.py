@@ -37,7 +37,7 @@ end_task = DummyOperator(task_id='end_task', dag=dag)
 trigger_dag2 = TriggerDagRunOperator(
     task_id='trigger_dag2',
     trigger_dag_id='rundatabricksnotebook0908',  # The DAG ID of the DAG to trigger
-    dag=dag1,
+    dag=dag,
 )
 
 # Define the task dependencies
