@@ -17,7 +17,7 @@ default_args = {
 
 # Define the DAG
 dag = DAG(
-    'data scraping',
+    'datascraping',
     default_args=default_args,
     description='A simple hello world DAG',
     schedule_interval=timedelta(days=1),
