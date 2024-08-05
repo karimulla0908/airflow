@@ -17,7 +17,7 @@ default_args = {
 
 # Define the DAG
 dag = DAG(
-    'data_scraping_task',
+    'data_scraping',
     default_args=default_args,
     description='A simple hello world DAG',
     schedule_interval=timedelta(days=1),
@@ -25,7 +25,7 @@ dag = DAG(
 
 # Define the task
 hello_task = BashOperator(
-    task_id='say_hello',
+    task_id='data_scraping',
     bash_command='echo "Hello, World!"',
     dag=dag,
 )
@@ -41,4 +41,4 @@ trigger_dag2 = TriggerDagRunOperator(
 )
 
 # Define the task dependencies
-start_task >> data_scraping_task >> databricks_task >> end_task
+start_task >> data_scraping >> databricks_task >> end_task
