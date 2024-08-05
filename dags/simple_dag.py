@@ -17,7 +17,7 @@ default_args = {
 
 # Define the DAG
 dag = DAG(
-    'hello_world',
+    'data scraping task',
     default_args=default_args,
     description='A simple hello world DAG',
     schedule_interval=timedelta(days=1),
@@ -35,7 +35,7 @@ start_task = DummyOperator(task_id='start_task', dag=dag)
 end_task = DummyOperator(task_id='end_task', dag=dag)
 
 trigger_dag2 = TriggerDagRunOperator(
-    task_id='trigger_dag2',
+    task_id='databricks task',
     trigger_dag_id='rundatabricksnotebook0908',  # The DAG ID of the DAG to trigger
     dag=dag,
 )
